@@ -24,7 +24,7 @@ include_mf = st.sidebar.checkbox("Include Mutual Fund (Risk Free Asset)?", value
 if include_mf:
     mf_return = st.sidebar.number_input("Mutual Fund Expected Annual Return (decimal)", 
                                           value=0.057, format="%.4f")
-    # We'll use a placeholder ticker for mutual fund; it won't fetch data.
+    # Use a placeholder ticker for mutual fund; it won't fetch data.
     tickers = risk_assets + ["MUTUAL_FUND"]
 else:
     tickers = risk_assets.copy()
@@ -73,7 +73,6 @@ for ticker in tickers:
             asset_sigma.append(annual_sigma)
         except Exception as e:
             st.error(f"Error fetching data for {ticker}. Using default assumptions.")
-            # Default assumptions if data fetch fails
             asset_mu.append(0.10)
             asset_sigma.append(0.35)
 
@@ -83,19 +82,22 @@ asset_sigma = np.array(asset_sigma)
 # Build the correlation matrix for risk assets.
 # For the mutual fund, we set correlation with others to 0.
 n = len(tickers)
-# Create an empty correlation matrix
 corr_matrix = np.eye(n)
 
-# If there are risk assets (non-mutual fund), calculate correlation from historical returns.
+# Only include tickers with fetched data for correlation calculations
 risk_tickers = [ticker for ticker in tickers if ticker != "MUTUAL_FUND"]
-if len(risk_tickers) > 1:
-    returns_df = pd.DataFrame({ticker: returns_dict[ticker] for ticker in risk_tickers})
+valid_risk_tickers = [ticker for ticker in risk_tickers if ticker in returns_dict]
+
+if len(valid_risk_tickers) > 1:
+    returns_df = pd.DataFrame({ticker: returns_dict[ticker] for ticker in valid_risk_tickers})
     corr = returns_df.corr().values
     # Fill the top-left block of the correlation matrix with calculated correlations.
     for i, ti in enumerate(tickers):
         for j, tj in enumerate(tickers):
-            if ti != "MUTUAL_FUND" and tj != "MUTUAL_FUND":
-                corr_matrix[i, j] = corr[risk_tickers.index(ti), risk_tickers.index(tj)]
+            if ti in valid_risk_tickers and tj in valid_risk_tickers:
+                idx_i = valid_risk_tickers.index(ti)
+                idx_j = valid_risk_tickers.index(tj)
+                corr_matrix[i, j] = corr[idx_i, idx_j]
 # Mutual fund rows and columns remain 0 (except diagonal=1) since it's risk free.
 
 # Compute the covariance matrix
@@ -113,12 +115,11 @@ for i in range(num_simulations):
     portfolio_value = 1.0  # Start with normalized value
     for _ in range(N):
         # Generate daily returns using multivariate normal for all assets
-        # For assets with zero variance (e.g., mutual fund), the random draw will return the mean.
         daily_returns = np.random.multivariate_normal(asset_mu * dt, cov_matrix * dt)
-        # Alternatively, enforce risk-free asset's daily return:
+        # Enforce risk-free asset's daily return for mutual fund:
         for j, ticker in enumerate(tickers):
             if ticker == "MUTUAL_FUND":
-                daily_returns[j] = mf_return/252  # deterministic
+                daily_returns[j] = mf_return / 252  # deterministic
         port_daily_return = np.dot(weights, daily_returns)
         portfolio_value *= (1 + port_daily_return)
     portfolio_final_values[i] = portfolio_value
