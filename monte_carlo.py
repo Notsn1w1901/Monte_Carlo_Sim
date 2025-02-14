@@ -50,11 +50,9 @@ for ticker in tickers:
             
             prices = data['Adj Close'] if 'Adj Close' in data.columns else data['Close']
             ret = prices.pct_change().dropna()
-            
-            # Ensure valid returns are present
             if ret.empty:
-                raise ValueError(f"Empty return data for {ticker}")
-            
+                raise ValueError(f"Insufficient data for {ticker}")
+
             returns_dict[ticker] = ret
             
             daily_mu = ret.mean()
@@ -69,42 +67,38 @@ for ticker in tickers:
             asset_mu.append(0.10)
             asset_sigma.append(0.35)
 
-# Convert lists to NumPy arrays
-if len(asset_mu) != len(tickers):
-    st.error("Mismatch in asset return and ticker count. Using fallback values.")
-    asset_mu = [0.10] * len(tickers)
-    asset_sigma = [0.35] * len(tickers)
+# Ensure valid numerical values for asset_mu and asset_sigma
+cleaned_mu = [float(m) if m is not None and not np.isnan(m) else 0.10 for m in asset_mu]
+cleaned_sigma = [float(s) if s is not None and not np.isnan(s) else 0.35 for s in asset_sigma]
 
-asset_mu = np.array(asset_mu, dtype=float)
-asset_sigma = np.array(asset_sigma, dtype=float)
+# Convert to NumPy arrays
+asset_mu = np.array(cleaned_mu, dtype=float)
+asset_sigma = np.array(cleaned_sigma, dtype=float)
 
 # Build the correlation matrix
 n = len(tickers)
-corr_matrix = np.eye(n)
+corr_matrix = np.eye(n)  # Default to identity matrix
 
-valid_risk_tickers = [ticker for ticker in risk_assets if ticker in returns_dict and not returns_dict[ticker].empty]
+risk_tickers = [ticker for ticker in tickers if ticker != "MUTUAL_FUND"]
+valid_risk_tickers = [ticker for ticker in risk_tickers if ticker in returns_dict]
 
 if len(valid_risk_tickers) > 1:
     try:
         returns_df = pd.DataFrame({ticker: returns_dict[ticker] for ticker in valid_risk_tickers})
-        if not returns_df.empty:
-            corr = returns_df.corr().values
-            for i, ti in enumerate(tickers):
-                for j, tj in enumerate(tickers):
-                    if ti in valid_risk_tickers and tj in valid_risk_tickers:
-                        idx_i = valid_risk_tickers.index(ti)
-                        idx_j = valid_risk_tickers.index(tj)
-                        corr_matrix[i, j] = corr[idx_i, idx_j]
+        corr = returns_df.corr().values
+        for i, ti in enumerate(tickers):
+            for j, tj in enumerate(tickers):
+                if ti in valid_risk_tickers and tj in valid_risk_tickers:
+                    idx_i = valid_risk_tickers.index(ti)
+                    idx_j = valid_risk_tickers.index(tj)
+                    corr_matrix[i, j] = corr[idx_i, idx_j]
     except Exception as e:
         st.error(f"Error computing correlation matrix: {str(e)}. Using identity matrix.")
-else:
-    st.warning("Not enough valid assets to compute correlation matrix. Using identity matrix.")
 
 # Compute covariance matrix
 sigma_matrix = np.outer(asset_sigma, asset_sigma)
 cov_matrix = sigma_matrix * corr_matrix
 
-# Display Asset Parameters
 st.subheader("Asset Parameters")
 for i, ticker in enumerate(tickers):
     st.write(f"**{ticker}**: Annual Expected Return = {asset_mu[i]:.2%}, Annual Volatility = {asset_sigma[i]:.2%}")
@@ -120,13 +114,17 @@ for i in range(num_simulations):
     portfolio_value = 1.0
     simulations[i, 0] = portfolio_value
     for t in range(1, N + 1):
-        daily_returns = np.random.multivariate_normal(asset_mu * dt, cov_matrix * dt)
-        for j, ticker in enumerate(tickers):
-            if ticker == "MUTUAL_FUND":
-                daily_returns[j] = mf_return / 252
-        port_daily_return = np.dot(weights, daily_returns)
-        portfolio_value *= (1 + port_daily_return)
-        simulations[i, t] = portfolio_value
+        try:
+            daily_returns = np.random.multivariate_normal(asset_mu * dt, cov_matrix * dt)
+            for j, ticker in enumerate(tickers):
+                if ticker == "MUTUAL_FUND":
+                    daily_returns[j] = mf_return / 252
+            port_daily_return = np.dot(weights, daily_returns)
+            portfolio_value *= (1 + port_daily_return)
+            simulations[i, t] = portfolio_value
+        except Exception as e:
+            st.error(f"Error in simulation step {t}: {str(e)}")
+
     final_values[i] = portfolio_value
 
 # Compute statistics
