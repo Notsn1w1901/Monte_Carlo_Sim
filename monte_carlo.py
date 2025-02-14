@@ -69,41 +69,32 @@ for ticker in tickers:
             asset_mu.append(0.10)
             asset_sigma.append(0.35)
 
-# Convert lists to NumPy arrays, ensuring they are not empty
-if not asset_mu:
-    asset_mu = [0.10]
-if not asset_sigma:
-    asset_sigma = [0.35]
+# Convert lists to NumPy arrays
+if len(asset_mu) != len(tickers):
+    st.error("Mismatch in asset return and ticker count. Using fallback values.")
+    asset_mu = [0.10] * len(tickers)
+    asset_sigma = [0.35] * len(tickers)
 
-# Ensure asset_mu and asset_sigma are always valid numeric arrays
-valid_mu = [x for x in asset_mu if isinstance(x, (int, float)) and not np.isnan(x)]
-valid_sigma = [x for x in asset_sigma if isinstance(x, (int, float)) and not np.isnan(x)]
-
-if not valid_mu:
-    st.warning("No valid asset return data found. Using default return (10%) and volatility (35%).")
-    valid_mu = [0.10]
-    valid_sigma = [0.35]
-
-asset_mu = np.array(valid_mu, dtype=float)
-asset_sigma = np.array(valid_sigma, dtype=float)
+asset_mu = np.array(asset_mu, dtype=float)
+asset_sigma = np.array(asset_sigma, dtype=float)
 
 # Build the correlation matrix
 n = len(tickers)
 corr_matrix = np.eye(n)
 
-risk_tickers = [ticker for ticker in tickers if ticker != "MUTUAL_FUND"]
-valid_risk_tickers = [ticker for ticker in risk_tickers if ticker in returns_dict and not returns_dict[ticker].empty]
+valid_risk_tickers = [ticker for ticker in risk_assets if ticker in returns_dict and not returns_dict[ticker].empty]
 
 if len(valid_risk_tickers) > 1:
     try:
         returns_df = pd.DataFrame({ticker: returns_dict[ticker] for ticker in valid_risk_tickers})
-        corr = returns_df.corr().values
-        for i, ti in enumerate(tickers):
-            for j, tj in enumerate(tickers):
-                if ti in valid_risk_tickers and tj in valid_risk_tickers:
-                    idx_i = valid_risk_tickers.index(ti)
-                    idx_j = valid_risk_tickers.index(tj)
-                    corr_matrix[i, j] = corr[idx_i, idx_j]
+        if not returns_df.empty:
+            corr = returns_df.corr().values
+            for i, ti in enumerate(tickers):
+                for j, tj in enumerate(tickers):
+                    if ti in valid_risk_tickers and tj in valid_risk_tickers:
+                        idx_i = valid_risk_tickers.index(ti)
+                        idx_j = valid_risk_tickers.index(tj)
+                        corr_matrix[i, j] = corr[idx_i, idx_j]
     except Exception as e:
         st.error(f"Error computing correlation matrix: {str(e)}. Using identity matrix.")
 else:
@@ -113,6 +104,7 @@ else:
 sigma_matrix = np.outer(asset_sigma, asset_sigma)
 cov_matrix = sigma_matrix * corr_matrix
 
+# Display Asset Parameters
 st.subheader("Asset Parameters")
 for i, ticker in enumerate(tickers):
     st.write(f"**{ticker}**: Annual Expected Return = {asset_mu[i]:.2%}, Annual Volatility = {asset_sigma[i]:.2%}")
