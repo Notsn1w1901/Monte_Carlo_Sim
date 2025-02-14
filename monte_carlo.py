@@ -108,12 +108,14 @@ st.subheader("Asset Parameters")
 for i, ticker in enumerate(tickers):
     st.write(f"**{ticker}**: Annual Expected Return = {asset_mu[i]:.2%}, Annual Volatility = {asset_sigma[i]:.2%}")
 
-# Monte Carlo Simulation
-portfolio_final_values = np.zeros(num_simulations)
+# Monte Carlo Simulation - Store full simulation paths
+simulations = np.zeros((num_simulations, N + 1))
+final_values = np.zeros(num_simulations)
 
 for i in range(num_simulations):
     portfolio_value = 1.0  # Start with normalized value
-    for _ in range(N):
+    simulations[i, 0] = portfolio_value
+    for t in range(1, N + 1):
         # Generate daily returns using multivariate normal for all assets
         daily_returns = np.random.multivariate_normal(asset_mu * dt, cov_matrix * dt)
         # Enforce risk-free asset's daily return for mutual fund:
@@ -122,23 +124,37 @@ for i in range(num_simulations):
                 daily_returns[j] = mf_return / 252  # deterministic
         port_daily_return = np.dot(weights, daily_returns)
         portfolio_value *= (1 + port_daily_return)
-    portfolio_final_values[i] = portfolio_value
+        simulations[i, t] = portfolio_value
+    final_values[i] = portfolio_value
 
 # Calculate simulation statistics
-expected_value = np.mean(portfolio_final_values)
-std_value = np.std(portfolio_final_values)
-var_5 = np.percentile(portfolio_final_values, 5)
+expected_value = np.mean(final_values)
+std_value = np.std(final_values)
+var_5 = np.percentile(final_values, 5)
 
 st.subheader("Simulation Results")
 st.write("**Expected Portfolio Value after 1 Year:**", np.round(expected_value, 4))
 st.write("**Standard Deviation:**", np.round(std_value, 4))
 st.write("**5th Percentile (VaR):**", np.round(var_5, 4))
 
-# Plot the distribution of final portfolio values
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.hist(portfolio_final_values, bins=50, alpha=0.75, color='skyblue', edgecolor='black')
-ax.set_xlabel("Portfolio Value after 1 Year")
-ax.set_ylabel("Frequency")
-ax.set_title("Monte Carlo Simulation of Portfolio Value")
-ax.grid(True)
-st.pyplot(fig)
+# Plot the histogram of final portfolio values
+fig1, ax1 = plt.subplots(figsize=(10, 6))
+ax1.hist(final_values, bins=50, alpha=0.75, color='skyblue', edgecolor='black')
+ax1.set_xlabel("Portfolio Value after 1 Year")
+ax1.set_ylabel("Frequency")
+ax1.set_title("Histogram: Monte Carlo Simulation of Final Portfolio Values")
+ax1.grid(True)
+st.pyplot(fig1)
+
+# Plot simulation paths - sample up to 100 paths for clarity
+num_paths_to_plot = min(100, num_simulations)
+sample_indices = np.random.choice(num_simulations, num_paths_to_plot, replace=False)
+
+fig2, ax2 = plt.subplots(figsize=(10, 6))
+for idx in sample_indices:
+    ax2.plot(np.arange(N + 1), simulations[idx, :], alpha=0.5)
+ax2.set_xlabel("Trading Days")
+ax2.set_ylabel("Portfolio Value (Normalized)")
+ax2.set_title("Monte Carlo Simulation Paths")
+ax2.grid(True)
+st.pyplot(fig2)
