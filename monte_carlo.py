@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 import yfinance as yf
-import numbers
 
 st.title("Monte Carlo Simulation for Portfolio Value")
 
@@ -54,43 +53,36 @@ for ticker in tickers:
             
             if ret.empty:
                 raise ValueError(f"No valid return data for {ticker}")
-
+            
             returns_dict[ticker] = ret
-
-            # Compute statistics
+            
             daily_mu = ret.mean()
             daily_sigma = ret.std()
             annual_mu = daily_mu * 252
             annual_sigma = daily_sigma * np.sqrt(252)
-
+            
             asset_mu.append(annual_mu)
             asset_sigma.append(annual_sigma)
-
         except Exception as e:
             st.error(f"Error fetching data for {ticker}: {str(e)}. Using default assumptions.")
-            asset_mu.append(0.10)  # Default expected return
-            asset_sigma.append(0.35)  # Default volatility
+            asset_mu.append(0.10)
+            asset_sigma.append(0.35)
 
-# Ensure all values in asset_mu and asset_sigma are valid floats
-def safe_float(value, default=0.10):
-    """Convert value to float safely, replacing errors with a default value."""
-    if isinstance(value, numbers.Number):  # Check if it's a numeric type
-        return float(value)
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default  # Use default value if conversion fails
+# Convert lists to NumPy arrays, ensuring they are not empty
+valid_mu = [float(m) if isinstance(m, (int, float)) and not np.isnan(m) else 0.10 for m in asset_mu]
+valid_sigma = [float(s) if isinstance(s, (int, float)) and not np.isnan(s) else 0.35 for s in asset_sigma]
 
-cleaned_mu = [safe_float(m) for m in asset_mu]
-cleaned_sigma = [safe_float(s, default=0.35) for s in asset_sigma]
+if not valid_mu:
+    st.warning("No valid asset return data found. Using default return (10%) and volatility (35%).")
+    valid_mu = [0.10]
+    valid_sigma = [0.35]
 
-# Convert to NumPy arrays
-asset_mu = np.array(cleaned_mu, dtype=float)
-asset_sigma = np.array(cleaned_sigma, dtype=float)
+asset_mu = np.array(valid_mu, dtype=float)
+asset_sigma = np.array(valid_sigma, dtype=float)
 
 # Build the correlation matrix
 n = len(tickers)
-corr_matrix = np.eye(n)  # Default to identity matrix
+corr_matrix = np.eye(n)
 
 risk_tickers = [ticker for ticker in tickers if ticker != "MUTUAL_FUND"]
 valid_risk_tickers = [ticker for ticker in risk_tickers if ticker in returns_dict]
@@ -98,15 +90,18 @@ valid_risk_tickers = [ticker for ticker in risk_tickers if ticker in returns_dic
 if len(valid_risk_tickers) > 1:
     try:
         returns_df = pd.DataFrame({ticker: returns_dict[ticker] for ticker in valid_risk_tickers})
-        corr = returns_df.corr().values
-        for i, ti in enumerate(tickers):
-            for j, tj in enumerate(tickers):
-                if ti in valid_risk_tickers and tj in valid_risk_tickers:
-                    idx_i = valid_risk_tickers.index(ti)
-                    idx_j = valid_risk_tickers.index(tj)
-                    corr_matrix[i, j] = corr[idx_i, idx_j]
+        if len(returns_df.columns) > 1:  # Ensure at least two assets
+            corr = returns_df.corr().values
+            for i, ti in enumerate(tickers):
+                for j, tj in enumerate(tickers):
+                    if ti in valid_risk_tickers and tj in valid_risk_tickers:
+                        idx_i = valid_risk_tickers.index(ti)
+                        idx_j = valid_risk_tickers.index(tj)
+                        corr_matrix[i, j] = corr[idx_i, idx_j]
     except Exception as e:
         st.warning(f"Error computing correlation matrix: {str(e)}. Using identity matrix.")
+else:
+    st.warning("Only one valid asset found. Correlation matrix set to identity.")
 
 # Compute covariance matrix
 sigma_matrix = np.outer(asset_sigma, asset_sigma)
@@ -127,7 +122,7 @@ for i in range(num_simulations):
     portfolio_value = 1.0
     simulations[i, 0] = portfolio_value
     for t in range(1, N + 1):
-        daily_returns = np.random.multivariate_normal(asset_mu * dt, cov_matrix * dt)
+        daily_returns = np.random.multivariate_normal(asset_mu * dt, cov_matrix * dt, check_valid='ignore')
         for j, ticker in enumerate(tickers):
             if ticker == "MUTUAL_FUND":
                 daily_returns[j] = mf_return / 252
