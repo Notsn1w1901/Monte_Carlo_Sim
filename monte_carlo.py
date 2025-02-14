@@ -8,12 +8,13 @@ st.title("Monte Carlo Simulation for Portfolio Value")
 
 st.write("""
 This dashboard simulates your portfolio performance over one year using a Monte Carlo simulation.
-You can enter your asset tickers, decide if you want to include a risk-free mutual fund,
+You can enter your asset tickers, decide if you want to include a risk‐free mutual fund,
 and adjust parameters. The risk assets' parameters (expected return, volatility, correlation)
 are estimated from one year of historical data from Yahoo Finance.
 """)
 
 # Sidebar Inputs for User Interactivity
+st.sidebar.image("Designer.png", use_container_width=True)
 st.sidebar.header("Portfolio Inputs")
 
 # Sidebar Inputs
