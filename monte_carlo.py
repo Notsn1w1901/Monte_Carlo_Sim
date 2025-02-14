@@ -64,8 +64,14 @@ for ticker in tickers:
             asset_mu.append(0.10)
             asset_sigma.append(0.35)
 
-asset_mu = np.array(asset_mu) if asset_mu else np.array([0.10])
-asset_sigma = np.array(asset_sigma) if asset_sigma else np.array([0.35])
+# Convert lists to NumPy arrays, ensuring they are not empty
+if not asset_mu:
+    asset_mu = [0.10]
+if not asset_sigma:
+    asset_sigma = [0.35]
+
+asset_mu = np.array(asset_mu)
+asset_sigma = np.array(asset_sigma)
 
 # Build the correlation matrix
 n = len(tickers)
