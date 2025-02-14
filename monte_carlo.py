@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 import yfinance as yf
+import numbers
 
 st.title("Monte Carlo Simulation for Portfolio Value")
 
@@ -50,26 +51,38 @@ for ticker in tickers:
             
             prices = data['Adj Close'] if 'Adj Close' in data.columns else data['Close']
             ret = prices.pct_change().dropna()
+            
             if ret.empty:
-                raise ValueError(f"Insufficient data for {ticker}")
+                raise ValueError(f"No valid return data for {ticker}")
 
             returns_dict[ticker] = ret
-            
+
+            # Compute statistics
             daily_mu = ret.mean()
             daily_sigma = ret.std()
             annual_mu = daily_mu * 252
             annual_sigma = daily_sigma * np.sqrt(252)
-            
+
             asset_mu.append(annual_mu)
             asset_sigma.append(annual_sigma)
+
         except Exception as e:
             st.error(f"Error fetching data for {ticker}: {str(e)}. Using default assumptions.")
-            asset_mu.append(0.10)
-            asset_sigma.append(0.35)
+            asset_mu.append(0.10)  # Default expected return
+            asset_sigma.append(0.35)  # Default volatility
 
-# Ensure valid numerical values for asset_mu and asset_sigma
-cleaned_mu = [float(m) if m is not None and not np.isnan(m) else 0.10 for m in asset_mu]
-cleaned_sigma = [float(s) if s is not None and not np.isnan(s) else 0.35 for s in asset_sigma]
+# Ensure all values in asset_mu and asset_sigma are valid floats
+def safe_float(value, default=0.10):
+    """Convert value to float safely, replacing errors with a default value."""
+    if isinstance(value, numbers.Number):  # Check if it's a numeric type
+        return float(value)
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default  # Use default value if conversion fails
+
+cleaned_mu = [safe_float(m) for m in asset_mu]
+cleaned_sigma = [safe_float(s, default=0.35) for s in asset_sigma]
 
 # Convert to NumPy arrays
 asset_mu = np.array(cleaned_mu, dtype=float)
@@ -93,7 +106,7 @@ if len(valid_risk_tickers) > 1:
                     idx_j = valid_risk_tickers.index(tj)
                     corr_matrix[i, j] = corr[idx_i, idx_j]
     except Exception as e:
-        st.error(f"Error computing correlation matrix: {str(e)}. Using identity matrix.")
+        st.warning(f"Error computing correlation matrix: {str(e)}. Using identity matrix.")
 
 # Compute covariance matrix
 sigma_matrix = np.outer(asset_sigma, asset_sigma)
@@ -114,17 +127,13 @@ for i in range(num_simulations):
     portfolio_value = 1.0
     simulations[i, 0] = portfolio_value
     for t in range(1, N + 1):
-        try:
-            daily_returns = np.random.multivariate_normal(asset_mu * dt, cov_matrix * dt)
-            for j, ticker in enumerate(tickers):
-                if ticker == "MUTUAL_FUND":
-                    daily_returns[j] = mf_return / 252
-            port_daily_return = np.dot(weights, daily_returns)
-            portfolio_value *= (1 + port_daily_return)
-            simulations[i, t] = portfolio_value
-        except Exception as e:
-            st.error(f"Error in simulation step {t}: {str(e)}")
-
+        daily_returns = np.random.multivariate_normal(asset_mu * dt, cov_matrix * dt)
+        for j, ticker in enumerate(tickers):
+            if ticker == "MUTUAL_FUND":
+                daily_returns[j] = mf_return / 252
+        port_daily_return = np.dot(weights, daily_returns)
+        portfolio_value *= (1 + port_daily_return)
+        simulations[i, t] = portfolio_value
     final_values[i] = portfolio_value
 
 # Compute statistics
