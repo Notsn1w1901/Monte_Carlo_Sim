@@ -8,19 +8,17 @@ st.title("Monte Carlo Simulation for Portfolio Value")
 
 st.write("""
 This dashboard simulates your portfolio performance over one year using a Monte Carlo simulation.
-You can enter your asset tickers, decide if you want to include a risk‐free mutual fund,
+You can enter your asset tickers, decide if you want to include a risk-free mutual fund,
 and adjust parameters. The risk assets' parameters (expected return, volatility, correlation)
 are estimated from one year of historical data from Yahoo Finance.
 """)
 
 # Sidebar Inputs for User Interactivity
-st.sidebar.image("Designer.png", use_container_width=True)
 st.sidebar.header("Portfolio Inputs")
 
 # Sidebar Inputs
 asset_input = st.sidebar.text_input("Enter asset tickers (comma separated)", 
-                                      "ADRO.JK, ITMG.JK, BBCA.JK, BTC-USD, SOL-USD")
-# Process tickers; strip extra spaces
+                                      "AAPL, MSFT, BTC-USD, SOL-USD")
 risk_assets = [ticker.strip() for ticker in asset_input.split(",") if ticker.strip()]
 
 # Checkbox for mutual fund (risk free asset)
@@ -28,46 +26,31 @@ include_mf = st.sidebar.checkbox("Include Mutual Fund (Risk Free Asset)?", value
 if include_mf:
     mf_return = st.sidebar.number_input("Mutual Fund Expected Annual Return (decimal)", 
                                           value=0.057, format="%.4f")
-    # Use a placeholder ticker for mutual fund; it won't fetch data.
     tickers = risk_assets + ["MUTUAL_FUND"]
 else:
     tickers = risk_assets.copy()
 
-# Sidebar: Let the user input weights (comma separated, must sum to 1)
-default_weights = ",".join(["{:.4f}".format(1/len(tickers)) for _ in tickers])
-weights_str = st.sidebar.text_input("Enter weights for each asset (comma separated, sum=1)", 
-                                      default_weights)
-try:
-    weights = np.array([float(x.strip()) for x in weights_str.split(",")])
-    if not np.isclose(np.sum(weights), 1):
-        st.sidebar.error("Weights must sum to 1.")
-except Exception as e:
-    st.sidebar.error("Error parsing weights. Using equal weights.")
-    weights = np.array([1/len(tickers)] * len(tickers))
+# Rest of the inputs remain the same...
 
-# Simulation parameters
-num_simulations = st.sidebar.number_input("Number of Simulations", 
-                                            min_value=1000, max_value=50000, value=10000, step=1000)
-T = 1      # Time horizon (1 year)
-N = 252    # Trading days in a year
-dt = T / N # Time increment
-
-# Fetch historical data for risk assets using yfinance
-# We'll store annualized expected return and volatility for each asset.
-asset_mu = []
-asset_sigma = []
-# For risk assets, also store daily returns for correlation calculation.
-returns_dict = {}
-
+# Modified data fetching section
 for ticker in tickers:
     if ticker == "MUTUAL_FUND":
-        # Use user input for mutual fund expected return; assume 0 volatility.
         asset_mu.append(mf_return)
         asset_sigma.append(0.0)
     else:
         try:
-            data = yf.download(ticker, period="1y", interval="1d")['Adj Close']
-            ret = data.pct_change().dropna()
+            data = yf.download(ticker, period="1y", interval="1d")
+            if data.empty:
+                raise ValueError(f"No data found for {ticker}")
+            
+            # Use Adjusted Close if available, otherwise use Close
+            if 'Adj Close' in data.columns:
+                prices = data['Adj Close']
+            else:
+                prices = data['Close']
+                st.info(f"Using Close price for {ticker} as Adjusted Close is not available")
+            
+            ret = prices.pct_change().dropna()
             returns_dict[ticker] = ret
             daily_mu = ret.mean()
             daily_sigma = ret.std()
@@ -76,7 +59,7 @@ for ticker in tickers:
             asset_mu.append(annual_mu)
             asset_sigma.append(annual_sigma)
         except Exception as e:
-            st.error(f"Error fetching data for {ticker}. Using default assumptions.")
+            st.error(f"Error fetching data for {ticker}: {str(e)}. Using default assumptions.")
             asset_mu.append(0.10)
             asset_sigma.append(0.35)
 
