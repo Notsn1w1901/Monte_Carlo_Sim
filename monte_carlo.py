@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import streamlit as sl
+import streamlit as st
 
 # Define assets and updated portfolio weights
 assets = ["ADRO.JK", "ITMG.JK", "BBCA.JK", "BTC-USD", "SOL-USD", "Mutual Fund"]
