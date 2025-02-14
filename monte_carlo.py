@@ -8,32 +8,36 @@ st.title("Monte Carlo Simulation for Portfolio Value")
 
 st.write("""
 This dashboard simulates your portfolio performance over one year using a Monte Carlo simulation.
-You can enter your asset tickers, decide if you want to include a risk‐free mutual fund,
+You can enter your asset tickers, decide if you want to include a risk-free mutual fund,
 and adjust parameters. The risk assets' parameters (expected return, volatility, correlation)
 are estimated from one year of historical data from Yahoo Finance.
 """)
 
-# Sidebar Inputs for User Interactivity
+# Sidebar Inputs
 st.sidebar.image("Designer.png", use_container_width=True)
 st.sidebar.header("Portfolio Inputs")
 
-# Sidebar Inputs
-asset_input = st.sidebar.text_input("Enter asset tickers (comma separated)", 
-                                      "AAPL, MSFT, BTC-USD, SOL-USD")
+asset_input = st.sidebar.text_input("Enter asset tickers (comma separated)", "AAPL, MSFT, BTC-USD, SOL-USD")
 risk_assets = [ticker.strip() for ticker in asset_input.split(",") if ticker.strip()]
 
-# Checkbox for mutual fund (risk free asset)
+# Checkbox for mutual fund (risk-free asset)
 include_mf = st.sidebar.checkbox("Include Mutual Fund (Risk Free Asset)?", value=True)
 if include_mf:
-    mf_return = st.sidebar.number_input("Mutual Fund Expected Annual Return (decimal)", 
-                                          value=0.057, format="%.4f")
+    mf_return = st.sidebar.number_input("Mutual Fund Expected Annual Return (decimal)", value=0.057, format="%.4f")
     tickers = risk_assets + ["MUTUAL_FUND"]
 else:
     tickers = risk_assets.copy()
 
-# Rest of the inputs remain the same...
+# User input for Monte Carlo simulation parameters
+num_simulations = st.sidebar.number_input("Number of Simulations", value=1000, min_value=100)
+N = 252  # Number of trading days in a year
+dt = 1 / N  # Time step for simulation
 
-# Modified data fetching section
+# Initialize lists
+asset_mu, asset_sigma = [], []
+returns_dict = {}
+
+# Data fetching and processing
 for ticker in tickers:
     if ticker == "MUTUAL_FUND":
         asset_mu.append(mf_return)
@@ -44,19 +48,15 @@ for ticker in tickers:
             if data.empty:
                 raise ValueError(f"No data found for {ticker}")
             
-            # Use Adjusted Close if available, otherwise use Close
-            if 'Adj Close' in data.columns:
-                prices = data['Adj Close']
-            else:
-                prices = data['Close']
-                st.info(f"Using Close price for {ticker} as Adjusted Close is not available")
-            
+            prices = data['Adj Close'] if 'Adj Close' in data.columns else data['Close']
             ret = prices.pct_change().dropna()
             returns_dict[ticker] = ret
+            
             daily_mu = ret.mean()
             daily_sigma = ret.std()
             annual_mu = daily_mu * 252
             annual_sigma = daily_sigma * np.sqrt(252)
+            
             asset_mu.append(annual_mu)
             asset_sigma.append(annual_sigma)
         except Exception as e:
@@ -67,28 +67,24 @@ for ticker in tickers:
 asset_mu = np.array(asset_mu)
 asset_sigma = np.array(asset_sigma)
 
-# Build the correlation matrix for risk assets.
-# For the mutual fund, we set correlation with others to 0.
+# Build the correlation matrix
 n = len(tickers)
 corr_matrix = np.eye(n)
 
-# Only include tickers with fetched data for correlation calculations
 risk_tickers = [ticker for ticker in tickers if ticker != "MUTUAL_FUND"]
 valid_risk_tickers = [ticker for ticker in risk_tickers if ticker in returns_dict]
 
 if len(valid_risk_tickers) > 1:
     returns_df = pd.DataFrame({ticker: returns_dict[ticker] for ticker in valid_risk_tickers})
     corr = returns_df.corr().values
-    # Fill the top-left block of the correlation matrix with calculated correlations.
     for i, ti in enumerate(tickers):
         for j, tj in enumerate(tickers):
             if ti in valid_risk_tickers and tj in valid_risk_tickers:
                 idx_i = valid_risk_tickers.index(ti)
                 idx_j = valid_risk_tickers.index(tj)
                 corr_matrix[i, j] = corr[idx_i, idx_j]
-# Mutual fund rows and columns remain 0 (except diagonal=1) since it's risk free.
 
-# Compute the covariance matrix
+# Compute covariance matrix
 sigma_matrix = np.outer(asset_sigma, asset_sigma)
 cov_matrix = sigma_matrix * corr_matrix
 
@@ -96,26 +92,27 @@ st.subheader("Asset Parameters")
 for i, ticker in enumerate(tickers):
     st.write(f"**{ticker}**: Annual Expected Return = {asset_mu[i]:.2%}, Annual Volatility = {asset_sigma[i]:.2%}")
 
-# Monte Carlo Simulation - Store full simulation paths
+# Equal-weighted portfolio
+weights = np.ones(len(tickers)) / len(tickers)
+
+# Monte Carlo Simulation
 simulations = np.zeros((num_simulations, N + 1))
 final_values = np.zeros(num_simulations)
 
 for i in range(num_simulations):
-    portfolio_value = 1.0  # Start with normalized value
+    portfolio_value = 1.0
     simulations[i, 0] = portfolio_value
     for t in range(1, N + 1):
-        # Generate daily returns using multivariate normal for all assets
         daily_returns = np.random.multivariate_normal(asset_mu * dt, cov_matrix * dt)
-        # Enforce risk-free asset's daily return for mutual fund:
         for j, ticker in enumerate(tickers):
             if ticker == "MUTUAL_FUND":
-                daily_returns[j] = mf_return / 252  # deterministic
+                daily_returns[j] = mf_return / 252
         port_daily_return = np.dot(weights, daily_returns)
         portfolio_value *= (1 + port_daily_return)
         simulations[i, t] = portfolio_value
     final_values[i] = portfolio_value
 
-# Calculate simulation statistics
+# Compute statistics
 expected_value = np.mean(final_values)
 std_value = np.std(final_values)
 var_5 = np.percentile(final_values, 5)
@@ -125,7 +122,7 @@ st.write("**Expected Portfolio Value after 1 Year:**", np.round(expected_value, 
 st.write("**Standard Deviation:**", np.round(std_value, 4))
 st.write("**5th Percentile (VaR):**", np.round(var_5, 4))
 
-# Plot the histogram of final portfolio values
+# Histogram of final portfolio values
 fig1, ax1 = plt.subplots(figsize=(10, 6))
 ax1.hist(final_values, bins=50, alpha=0.75, color='skyblue', edgecolor='black')
 ax1.set_xlabel("Portfolio Value after 1 Year")
@@ -134,7 +131,7 @@ ax1.set_title("Histogram: Monte Carlo Simulation of Final Portfolio Values")
 ax1.grid(True)
 st.pyplot(fig1)
 
-# Plot simulation paths - sample up to 100 paths for clarity
+# Plot simulation paths
 num_paths_to_plot = min(100, num_simulations)
 sample_indices = np.random.choice(num_simulations, num_paths_to_plot, replace=False)
 
