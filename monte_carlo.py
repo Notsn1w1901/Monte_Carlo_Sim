@@ -50,6 +50,11 @@ for ticker in tickers:
             
             prices = data['Adj Close'] if 'Adj Close' in data.columns else data['Close']
             ret = prices.pct_change().dropna()
+            
+            # Ensure valid returns are present
+            if ret.empty:
+                raise ValueError(f"Empty return data for {ticker}")
+            
             returns_dict[ticker] = ret
             
             daily_mu = ret.mean()
@@ -87,17 +92,22 @@ n = len(tickers)
 corr_matrix = np.eye(n)
 
 risk_tickers = [ticker for ticker in tickers if ticker != "MUTUAL_FUND"]
-valid_risk_tickers = [ticker for ticker in risk_tickers if ticker in returns_dict]
+valid_risk_tickers = [ticker for ticker in risk_tickers if ticker in returns_dict and not returns_dict[ticker].empty]
 
 if len(valid_risk_tickers) > 1:
-    returns_df = pd.DataFrame({ticker: returns_dict[ticker] for ticker in valid_risk_tickers})
-    corr = returns_df.corr().values
-    for i, ti in enumerate(tickers):
-        for j, tj in enumerate(tickers):
-            if ti in valid_risk_tickers and tj in valid_risk_tickers:
-                idx_i = valid_risk_tickers.index(ti)
-                idx_j = valid_risk_tickers.index(tj)
-                corr_matrix[i, j] = corr[idx_i, idx_j]
+    try:
+        returns_df = pd.DataFrame({ticker: returns_dict[ticker] for ticker in valid_risk_tickers})
+        corr = returns_df.corr().values
+        for i, ti in enumerate(tickers):
+            for j, tj in enumerate(tickers):
+                if ti in valid_risk_tickers and tj in valid_risk_tickers:
+                    idx_i = valid_risk_tickers.index(ti)
+                    idx_j = valid_risk_tickers.index(tj)
+                    corr_matrix[i, j] = corr[idx_i, idx_j]
+    except Exception as e:
+        st.error(f"Error computing correlation matrix: {str(e)}. Using identity matrix.")
+else:
+    st.warning("Not enough valid assets to compute correlation matrix. Using identity matrix.")
 
 # Compute covariance matrix
 sigma_matrix = np.outer(asset_sigma, asset_sigma)
