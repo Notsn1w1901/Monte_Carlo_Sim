@@ -70,8 +70,13 @@ if not asset_mu:
 if not asset_sigma:
     asset_sigma = [0.35]
 
-asset_mu = np.array(asset_mu)
-asset_sigma = np.array(asset_sigma)
+if not asset_mu:
+    st.warning("No valid asset data found. Using default return (10%) and volatility (35%).")
+    asset_mu = [0.10]  # Default annual return
+    asset_sigma = [0.35]  # Default annual volatility
+
+asset_mu = np.array(asset_mu, dtype=float)
+asset_sigma = np.array(asset_sigma, dtype=float)
 
 # Build the correlation matrix
 n = len(tickers)
