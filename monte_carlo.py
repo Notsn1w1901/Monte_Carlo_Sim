@@ -13,6 +13,10 @@ and adjust parameters. The risk assets' parameters (expected return, volatility,
 are estimated from one year of historical data from Yahoo Finance.
 """)
 
+# Sidebar Inputs for User Interactivity
+st.sidebar.image("Designer.png", use_container_width=True)
+st.sidebar.header("Portfolio Inputs")
+
 # Sidebar Inputs
 asset_input = st.sidebar.text_input("Enter asset tickers (comma separated)", 
                                       "ADRO.JK, ITMG.JK, BBCA.JK, BTC-USD, SOL-USD")
